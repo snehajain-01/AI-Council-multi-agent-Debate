@@ -1,0 +1,38 @@
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+
+# --- Node / React ---
+node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+
+# --- Databases / local data ---
+*.sqlite3
+*.db
+/backend/data/
+
+# --- Vector store / model artifacts ---
+*.faiss
+*.index
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
