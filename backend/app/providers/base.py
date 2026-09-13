@@ -22,6 +22,15 @@ class BaseLLMProvider(ABC):
     """
 
     @abstractmethod
-    async def generate(self, prompt: str, system: str | None = None) -> LLMResponse:
-        """Send a prompt to the model and return a normalized response."""
+    async def generate(
+        self,
+        prompt: str,
+        system: str | None = None,
+        json_schema: dict | None = None,
+    ) -> LLMResponse:
+        """Send a prompt to the model and return a normalized response.
+
+        If json_schema is provided, the provider must constrain the model's
+        output to valid JSON matching that schema.
+        """
         raise NotImplementedError

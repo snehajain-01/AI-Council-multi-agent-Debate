@@ -14,10 +14,17 @@ class OllamaProvider(BaseLLMProvider):
         self.model = model
         self.base_url = base_url.rstrip("/")
 
-    async def generate(self, prompt: str, system: str | None = None) -> LLMResponse:
+    async def generate(
+        self,
+        prompt: str,
+        system: str | None = None,
+        json_schema: dict | None = None,
+    ) -> LLMResponse:
         payload = {"model": self.model, "prompt": prompt, "stream": False}
         if system:
             payload["system"] = system
+        if json_schema:
+            payload["format"] = json_schema
 
         start = time.perf_counter()
         async with httpx.AsyncClient(timeout=120.0) as client:
