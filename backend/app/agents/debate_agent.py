@@ -8,6 +8,7 @@ from app.models.debate import (
     CounterargumentPoint,
     CritiquePoint,
     CritiqueSet,
+    RevisedPosition,
     SingleCounterResponse,
 )
 from app.providers.base import BaseLLMProvider
@@ -39,6 +40,24 @@ ROUND_3_SYSTEM_PROMPT = (
     "explain why, or 'clarified' if the criticism stems from a misunderstanding "
     "you can resolve. Do not reflexively defend every point -- a credible "
     "analyst concedes fair criticism."
+)
+
+def _truncate(text: str, max_len: int = 200) -> str:
+    """Shorten long generated text for reuse in a later prompt, on a word boundary."""
+    if len(text) <= max_len:
+        return text
+    return text[:max_len].rsplit(" ", 1)[0] + "..."
+
+
+ROUND_4_SYSTEM_PROMPT = (
+    "You are finalizing your position after a full round of debate. You must "
+    "genuinely incorporate any criticism you accepted -- do not simply repeat "
+    "your original position. If you accepted a criticism, your revised "
+    "position, reasoning, or confidence must visibly reflect that change, and "
+    "you must record it in changes_from_original. If you disputed or clarified "
+    "a point rather than accepting it, you are not obligated to change that "
+    "part of your position. Only list changes_from_original entries for "
+    "criticisms you actually accepted."
 )
 
 
@@ -130,3 +149,37 @@ class DebateAgent:
             response_type=single.response_type,
             explanation=single.explanation,
         )
+
+    async def revise(
+        self, original: AgentPosition, counterargument: Counterargument
+    ) -> RevisedPosition:
+        """Round 4: produce a final position that incorporates accepted criticism."""
+        if not counterargument.points:
+            prompt = (
+                f"Your original position was: {original.position}\n"
+                f"Your reasoning was: {original.reasoning}\n\n"
+                "You received no criticism during the debate. Restate your final position, "
+                "and leave changes_from_original empty since nothing needs to change."
+            )
+        else:
+            # Full explanations were already generated once in Round 3 and can be long;
+            # re-embedding all of them verbatim blows up the prompt (and generation time)
+            # for agents with many criticisms. The revision only needs the gist of each
+            # stance, not the full essay again.
+            responses = "\n".join(
+                f"{i + 1}. [{p.critique_category}] {p.response_type}: {_truncate(p.explanation)}"
+                for i, p in enumerate(counterargument.points)
+            )
+            prompt = (
+                f"Your original position was: {original.position}\n"
+                f"Your reasoning was: {original.reasoning}\n\n"
+                f"During the debate, you responded to criticism as follows:\n{responses}\n\n"
+                "Produce your final, revised position, incorporating every criticism you accepted above."
+            )
+
+        response = await self.provider.generate(
+            prompt=prompt,
+            system=ROUND_4_SYSTEM_PROMPT,
+            json_schema=RevisedPosition.model_json_schema(),
+        )
+        return RevisedPosition.model_validate_json(response.content)

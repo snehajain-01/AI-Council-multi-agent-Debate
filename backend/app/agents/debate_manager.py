@@ -4,7 +4,14 @@ import asyncio
 import random
 
 from app.agents.debate_agent import DebateAgent
-from app.models.debate import AgentPosition, Counterargument, CritiquePoint, CritiqueSet, Round2Result
+from app.models.debate import (
+    AgentPosition,
+    Counterargument,
+    CritiquePoint,
+    CritiqueSet,
+    RevisedPosition,
+    Round2Result,
+)
 
 
 class DebateManager:
@@ -59,3 +66,14 @@ class DebateManager:
         ]
         counterarguments = await asyncio.gather(*counter_tasks)
         return {agent.name: ca for agent, ca in zip(self.agents, counterarguments)}
+
+    async def run_round_4(
+        self,
+        positions: dict[str, AgentPosition],
+        counterarguments: dict[str, Counterargument],
+    ) -> dict[str, RevisedPosition]:
+        """Each agent produces a final position incorporating criticism it accepted."""
+        revised = await asyncio.gather(
+            *(agent.revise(positions[agent.name], counterarguments[agent.name]) for agent in self.agents)
+        )
+        return {agent.name: rp for agent, rp in zip(self.agents, revised)}

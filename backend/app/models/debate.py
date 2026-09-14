@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AgentPosition(BaseModel):
@@ -16,6 +16,20 @@ class AgentPosition(BaseModel):
     )
     confidence: float = Field(ge=0, le=1, description="Self-reported confidence from 0 to 1")
     weaknesses: list[str] = Field(description="Potential weaknesses the agent sees in its own position")
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def clamp_confidence(cls, value: float) -> float:
+        """Small local models occasionally ignore the 0-1 instruction (e.g. returning 80
+        or 1.1). Clamp rather than reject: this is untrusted model output, not internal
+        state, and a crashed debate is worse than a saturated confidence value."""
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return value
+        if value > 1:
+            value = value / 100 if value > 1.5 else 1.0
+        return max(0.0, min(1.0, value))
 
 
 CritiqueCategory = Literal[
@@ -86,3 +100,12 @@ class Counterargument(BaseModel):
     """An agent's full response to all critiques made against its own position (Round 3)."""
 
     points: list[CounterargumentPoint]
+
+
+class RevisedPosition(AgentPosition):
+    """An agent's final position after incorporating accepted criticism (Round 4: Revision)."""
+
+    changes_from_original: list[str] = Field(
+        description="Concrete changes made from the original position and why each was made; "
+        "empty only if no criticism was accepted"
+    )
