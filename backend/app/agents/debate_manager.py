@@ -4,7 +4,7 @@ import asyncio
 import random
 
 from app.agents.debate_agent import DebateAgent
-from app.models.debate import AgentPosition, CritiqueSet, Round2Result
+from app.models.debate import AgentPosition, Counterargument, CritiquePoint, CritiqueSet, Round2Result
 
 
 class DebateManager:
@@ -36,3 +36,26 @@ class DebateManager:
         critiques_by_agent = {agent.name: cs for agent, cs in zip(self.agents, critique_sets)}
 
         return Round2Result(critiques_by_agent=critiques_by_agent, label_maps=label_maps)
+
+    async def run_round_3(
+        self, positions: dict[str, AgentPosition], round2_result: Round2Result
+    ) -> dict[str, Counterargument]:
+        """Each agent responds to all critiques made against its own (real) position."""
+        points_by_target: dict[str, list[CritiquePoint]] = {agent.name: [] for agent in self.agents}
+
+        for critiquing_agent_name, critique_set in round2_result.critiques_by_agent.items():
+            label_map = round2_result.label_maps[critiquing_agent_name]
+            for critique in critique_set.critiques:
+                target_name = label_map.get(critique.target_label)
+                if target_name is None:
+                    # Critiquing agent used a label that doesn't resolve to a real
+                    # target (a small-model slip) -- skip rather than misattribute.
+                    continue
+                points_by_target[target_name].extend(critique.points)
+
+        counter_tasks = [
+            agent.respond_to_critiques(positions[agent.name], points_by_target[agent.name])
+            for agent in self.agents
+        ]
+        counterarguments = await asyncio.gather(*counter_tasks)
+        return {agent.name: ca for agent, ca in zip(self.agents, counterarguments)}

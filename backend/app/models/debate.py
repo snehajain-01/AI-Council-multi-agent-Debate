@@ -58,3 +58,31 @@ class Round2Result(BaseModel):
     label_maps: dict[str, dict[str, str]] = Field(
         description="critiquing agent name -> {anonymized label -> real target agent name}"
     )
+
+
+ResponseType = Literal["accepted", "disputed", "clarified"]
+
+
+class SingleCounterResponse(BaseModel):
+    """What we ask the model for per criticism -- the category is already known, so we
+    don't ask the model to restate it, removing one more chance for it to drift."""
+
+    response_type: ResponseType = Field(
+        description="'accepted' if the criticism is fair, 'disputed' if it is wrong, "
+        "'clarified' if it stems from a misunderstanding"
+    )
+    explanation: str = Field(description="Why the agent accepts, disputes, or clarifies this point")
+
+
+class CounterargumentPoint(BaseModel):
+    """One agent's response to a single critique point made against it."""
+
+    critique_category: CritiqueCategory = Field(description="Which critique this responds to")
+    response_type: ResponseType
+    explanation: str = Field(description="Why the agent accepts, disputes, or clarifies this point")
+
+
+class Counterargument(BaseModel):
+    """An agent's full response to all critiques made against its own position (Round 3)."""
+
+    points: list[CounterargumentPoint]

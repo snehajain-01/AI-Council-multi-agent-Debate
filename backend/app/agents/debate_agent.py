@@ -1,6 +1,15 @@
 """A single debate participant, backed by any LLMProvider."""
 
-from app.models.debate import AgentPosition, CritiqueSet
+import asyncio
+
+from app.models.debate import (
+    AgentPosition,
+    Counterargument,
+    CounterargumentPoint,
+    CritiquePoint,
+    CritiqueSet,
+    SingleCounterResponse,
+)
 from app.providers.base import BaseLLMProvider
 
 ROUND_1_SYSTEM_PROMPT = (
@@ -20,6 +29,16 @@ ROUND_2_SYSTEM_PROMPT = (
     "fallacies, contradictions, missing information, weak assumptions, "
     "irrelevance, and incompleteness. Only report an issue if it is genuinely "
     "present -- do not invent problems in an otherwise sound response."
+)
+
+ROUND_3_SYSTEM_PROMPT = (
+    "You are responding to criticism of your own position from other analysts. "
+    "You do not know their identities. For each criticism, decide honestly: "
+    "'accepted' if it is fair and your position was genuinely wrong or weak on "
+    "that point, 'disputed' if the criticism itself is mistaken and you can "
+    "explain why, or 'clarified' if the criticism stems from a misunderstanding "
+    "you can resolve. Do not reflexively defend every point -- a credible "
+    "analyst concedes fair criticism."
 )
 
 
@@ -71,3 +90,43 @@ class DebateAgent:
             json_schema=CritiqueSet.model_json_schema(),
         )
         return CritiqueSet.model_validate_json(response.content)
+
+    async def respond_to_critiques(
+        self, own_position: AgentPosition, critique_points: list[CritiquePoint]
+    ) -> Counterargument:
+        """Round 3: defend, concede, or clarify each criticism made against this agent's position.
+
+        Each criticism gets its own LLM call rather than asking for the whole list in one
+        shot: small models reliably produce one structured item at a time, but silently
+        drop items (often down to an empty list) when asked for several at once.
+        """
+        if not critique_points:
+            return Counterargument(points=[])
+
+        responses = await asyncio.gather(
+            *(self._respond_to_single_critique(own_position, point) for point in critique_points)
+        )
+        return Counterargument(points=list(responses))
+
+    async def _respond_to_single_critique(
+        self, own_position: AgentPosition, point: CritiquePoint
+    ) -> CounterargumentPoint:
+        prompt = (
+            f"Your original position was: {own_position.position}\n"
+            f"Your reasoning was: {own_position.reasoning}\n\n"
+            f"Another analyst raised this criticism of your position:\n"
+            f"[{point.category}] {point.description}\n\n"
+            "Respond to this single criticism."
+        )
+
+        response = await self.provider.generate(
+            prompt=prompt,
+            system=ROUND_3_SYSTEM_PROMPT,
+            json_schema=SingleCounterResponse.model_json_schema(),
+        )
+        single = SingleCounterResponse.model_validate_json(response.content)
+        return CounterargumentPoint(
+            critique_category=point.category,
+            response_type=single.response_type,
+            explanation=single.explanation,
+        )
