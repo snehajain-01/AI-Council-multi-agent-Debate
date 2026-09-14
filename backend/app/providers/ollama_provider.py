@@ -10,9 +10,10 @@ from app.providers.base import BaseLLMProvider, LLMResponse
 class OllamaProvider(BaseLLMProvider):
     """Calls a local Ollama instance's REST API to generate responses."""
 
-    def __init__(self, model: str, base_url: str = "http://localhost:11434"):
+    def __init__(self, model: str, base_url: str = "http://localhost:11434", timeout: float = 300.0):
         self.model = model
         self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
 
     async def generate(
         self,
@@ -27,7 +28,7 @@ class OllamaProvider(BaseLLMProvider):
             payload["format"] = json_schema
 
         start = time.perf_counter()
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(f"{self.base_url}/api/generate", json=payload)
             response.raise_for_status()
         latency_ms = (time.perf_counter() - start) * 1000
