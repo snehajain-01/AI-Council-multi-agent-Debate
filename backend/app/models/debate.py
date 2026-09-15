@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class AgentPosition(BaseModel):
@@ -109,3 +109,56 @@ class RevisedPosition(AgentPosition):
         description="Concrete changes made from the original position and why each was made; "
         "empty only if no criticism was accepted"
     )
+
+
+JUDGE_SCORE_FIELDS = (
+    "factual_correctness",
+    "logical_reasoning",
+    "evidence_support",
+    "relevance",
+    "completeness",
+    "clarity",
+)
+
+
+class JudgeScores(BaseModel):
+    """A judge's rubric scores for one agent's final position, each on a 0-100 scale."""
+
+    factual_correctness: float = Field(ge=0, le=100)
+    logical_reasoning: float = Field(ge=0, le=100)
+    evidence_support: float = Field(ge=0, le=100)
+    relevance: float = Field(ge=0, le=100)
+    completeness: float = Field(ge=0, le=100)
+    clarity: float = Field(ge=0, le=100)
+    justification: str = Field(description="A brief explanation of why these scores were given")
+
+    @model_validator(mode="before")
+    @classmethod
+    def clamp_scores(cls, data):
+        """Same rationale as AgentPosition.clamp_confidence: local models periodically
+        ignore numeric range instructions, and a crashed debate is worse than a
+        saturated score."""
+        if not isinstance(data, dict):
+            return data
+        for field in JUDGE_SCORE_FIELDS:
+            if field in data:
+                try:
+                    data[field] = max(0.0, min(100.0, float(data[field])))
+                except (TypeError, ValueError):
+                    pass
+        return data
+
+
+class JudgeVerdict(BaseModel):
+    """One judge's full evaluation of one (anonymized) agent's final position."""
+
+    target_label: str = Field(description="The anonymized label of the position that was scored")
+    scores: JudgeScores
+    weighted_total: float = Field(description="Weighted combination of the scores, computed in code, not by the model")
+
+
+class JudgeResult(BaseModel):
+    """The full output of judging, plus the de-anonymization key for internal use."""
+
+    verdicts_by_label: dict[str, JudgeVerdict]
+    label_map: dict[str, str] = Field(description="anonymized label -> real agent name")

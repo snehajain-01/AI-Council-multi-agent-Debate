@@ -4,11 +4,13 @@ import asyncio
 import random
 
 from app.agents.debate_agent import DebateAgent
+from app.agents.judge_agent import JudgeAgent
 from app.models.debate import (
     AgentPosition,
     Counterargument,
     CritiquePoint,
     CritiqueSet,
+    JudgeResult,
     RevisedPosition,
     Round2Result,
 )
@@ -77,3 +79,22 @@ class DebateManager:
             *(agent.revise(positions[agent.name], counterarguments[agent.name]) for agent in self.agents)
         )
         return {agent.name: rp for agent, rp in zip(self.agents, revised)}
+
+    async def run_judging(
+        self,
+        question: str,
+        revised_positions: dict[str, RevisedPosition],
+        judge: JudgeAgent,
+    ) -> JudgeResult:
+        """An independent judge scores each agent's final position, anonymized with a
+        fresh random relabeling -- a separate blind-evaluation moment from Round 2's."""
+        agent_names = list(revised_positions.keys())
+        shuffled_names = random.sample(agent_names, len(agent_names))
+        label_map = {f"Response {i + 1}": name for i, name in enumerate(shuffled_names)}
+
+        verdicts = await asyncio.gather(
+            *(judge.score(question, label, revised_positions[name]) for label, name in label_map.items())
+        )
+        verdicts_by_label = dict(zip(label_map.keys(), verdicts))
+
+        return JudgeResult(verdicts_by_label=verdicts_by_label, label_map=label_map)
