@@ -198,3 +198,29 @@ class ConsensusResult(BaseModel):
     judge_score_spread: float = Field(description="max weighted_total minus min weighted_total across agents")
     total_critique_volume: int = Field(description="Total critique points raised across all agents in Round 2")
     explanation: str = Field(description="Human-readable summary of why this consensus level was reached")
+
+
+class SynthesizedAnswer(BaseModel):
+    """What we ask the model for: just the final answer text. Every other field on
+    CouncilVerdict is already known from earlier, code-computed pipeline stages, so
+    there's no reason to re-expose them to another LLM call and risk drift."""
+
+    final_answer: str = Field(
+        description="The final answer to the original question, written to honestly reflect the "
+        "actual consensus level -- hedged or explicitly split if agents disagreed, confident only "
+        "if they genuinely agreed"
+    )
+
+
+class CouncilVerdict(BaseModel):
+    """The complete, user-facing output of a debate."""
+
+    question: str
+    final_answer: str
+    consensus_level: ConsensusLevel
+    consensus_explanation: str
+    confidence: float = Field(ge=0, le=100, description="Average judge score across final positions, out of 100")
+    strongest_agent: str = Field(description="The agent whose final position the judge scored highest")
+    strongest_agent_score: float
+    key_disagreements: list[str]
+    agent_positions: dict[str, str] = Field(description="Each agent's final position, for transparency")
