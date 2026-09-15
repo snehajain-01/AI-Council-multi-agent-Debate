@@ -162,3 +162,39 @@ class JudgeResult(BaseModel):
 
     verdicts_by_label: dict[str, JudgeVerdict]
     label_map: dict[str, str] = Field(description="anonymized label -> real agent name")
+
+
+AgreementLevel = Literal["full_agreement", "majority_agreement", "split", "full_disagreement"]
+
+
+class AgreementAssessment(BaseModel):
+    """An LLM's classification of whether the final (anonymized) positions actually
+    agree in substance, not just in tone or phrasing."""
+
+    agreement_level: AgreementLevel
+    shared_conclusion: str = Field(
+        description="The conclusion shared by agreeing agents, or an empty string if there is none"
+    )
+    key_disagreements: list[str] = Field(
+        description="Specific substantive points where positions genuinely differ; empty if none"
+    )
+
+
+ConsensusLevel = Literal["strong_consensus", "partial_consensus", "no_consensus"]
+
+
+class ConsensusResult(BaseModel):
+    """The Consensus Engine's final determination, combining agreement, judge scores,
+    and how much the agents challenged each other during debate.
+
+    Consensus is not majority vote and is not truth: it is possible, and must remain
+    possible, for this to resolve to "no_consensus" when agents genuinely disagree or
+    the judge finds their final positions too uneven in quality to treat as reliable.
+    """
+
+    consensus_level: ConsensusLevel
+    agreement: AgreementAssessment
+    average_judge_score: float
+    judge_score_spread: float = Field(description="max weighted_total minus min weighted_total across agents")
+    total_critique_volume: int = Field(description="Total critique points raised across all agents in Round 2")
+    explanation: str = Field(description="Human-readable summary of why this consensus level was reached")

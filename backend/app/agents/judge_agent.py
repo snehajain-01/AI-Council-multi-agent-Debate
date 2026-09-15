@@ -1,7 +1,7 @@
 """An independent judge that scores each agent's final position against a weighted rubric."""
 
 from app.core.scoring import DEFAULT_WEIGHTS, compute_weighted_score
-from app.models.debate import JudgeScores, JudgeVerdict, RevisedPosition
+from app.models.debate import AgreementAssessment, JudgeScores, JudgeVerdict, RevisedPosition
 from app.providers.base import BaseLLMProvider
 
 JUDGE_SYSTEM_PROMPT = (
@@ -11,6 +11,17 @@ JUDGE_SYSTEM_PROMPT = (
     "each criterion from 0 to 100 -- a position should not receive a high "
     "score on one criterion just because it is strong on another. Be "
     "skeptical of confident-sounding claims that lack real support."
+)
+
+AGREEMENT_SYSTEM_PROMPT = (
+    "You are assessing whether several independent analysts, after a full round "
+    "of debate, actually agree with each other in substance -- not whether they "
+    "merely sound similar or both use hedging language. You do not know their "
+    "identities. Classify their agreement honestly: 'full_agreement' only if "
+    "they reach the same substantive conclusion for compatible reasons, "
+    "'majority_agreement' if most but not all agree, 'split' if there is a "
+    "genuine, roughly even divide, and 'full_disagreement' if they reach "
+    "incompatible conclusions. Do not force agreement that is not really there."
 )
 
 
@@ -46,3 +57,25 @@ class JudgeAgent:
         scores = JudgeScores.model_validate_json(response.content)
         weighted_total = compute_weighted_score(scores, self.weights)
         return JudgeVerdict(target_label=label, scores=scores, weighted_total=weighted_total)
+
+    async def assess_agreement(
+        self, question: str, labeled_positions: dict[str, RevisedPosition]
+    ) -> AgreementAssessment:
+        """Classify whether the anonymized final positions actually agree in substance."""
+        sections = [
+            f"{label}: {position.position}\nReasoning: {position.reasoning}"
+            for label, position in labeled_positions.items()
+        ]
+        prompt = (
+            f"Question: {question}\n\n"
+            "Here are the final positions from several independent analysts:\n\n"
+            + "\n\n".join(sections)
+            + "\n\nClassify their overall agreement."
+        )
+
+        response = await self.provider.generate(
+            prompt=prompt,
+            system=AGREEMENT_SYSTEM_PROMPT,
+            json_schema=AgreementAssessment.model_json_schema(),
+        )
+        return AgreementAssessment.model_validate_json(response.content)

@@ -5,8 +5,10 @@ import random
 
 from app.agents.debate_agent import DebateAgent
 from app.agents.judge_agent import JudgeAgent
+from app.core.consensus import determine_consensus
 from app.models.debate import (
     AgentPosition,
+    ConsensusResult,
     Counterargument,
     CritiquePoint,
     CritiqueSet,
@@ -98,3 +100,31 @@ class DebateManager:
         verdicts_by_label = dict(zip(label_map.keys(), verdicts))
 
         return JudgeResult(verdicts_by_label=verdicts_by_label, label_map=label_map)
+
+    async def run_consensus(
+        self,
+        question: str,
+        revised_positions: dict[str, RevisedPosition],
+        round2_result: Round2Result,
+        judge_result: JudgeResult,
+        judge: JudgeAgent,
+    ) -> ConsensusResult:
+        """Combine agreement classification, judge scores, and debate intensity into
+        a final consensus level. Reuses judge_result's label map so the agreement
+        assessment sees the same anonymized view the judge scored."""
+        labeled_positions = {
+            label: revised_positions[name] for label, name in judge_result.label_map.items()
+        }
+        agreement = await judge.assess_agreement(question, labeled_positions)
+
+        total_critique_volume = sum(
+            len(critique.points)
+            for critique_set in round2_result.critiques_by_agent.values()
+            for critique in critique_set.critiques
+        )
+
+        return determine_consensus(
+            agreement=agreement,
+            judge_verdicts=list(judge_result.verdicts_by_label.values()),
+            total_critique_volume=total_critique_volume,
+        )
