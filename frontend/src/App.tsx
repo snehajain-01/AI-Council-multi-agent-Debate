@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createDebate, getDebate, type DebateDetail } from "./api";
+import { ProgressChecklist } from "./ProgressChecklist";
 
 function App() {
   const [question, setQuestion] = useState("");
@@ -68,9 +69,12 @@ function App() {
             <p className="font-medium mb-4">{debate.question}</p>
 
             {(debate.status === "pending" || debate.status === "running") && (
-              <p className="text-blue-600">
-                Status: {debate.status}... (this takes several minutes)
-              </p>
+              <div>
+                <p className="text-blue-600 mb-4">
+                  {debate.status === "pending" ? "Starting..." : "Debate in progress..."}
+                </p>
+                <ProgressChecklist currentStage={debate.stage} />
+              </div>
             )}
 
             {debate.status === "failed" && (

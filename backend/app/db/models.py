@@ -26,6 +26,7 @@ class DebateRecord(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     question: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    stage: Mapped[str | None] = mapped_column(String(30), nullable=True)
     verdict: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

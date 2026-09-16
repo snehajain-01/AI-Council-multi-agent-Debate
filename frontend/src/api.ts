@@ -2,10 +2,33 @@ const API_BASE_URL = "http://localhost:8000";
 
 export type DebateStatus = "pending" | "running" | "completed" | "failed";
 
+export type PipelineStage =
+  | "round_1"
+  | "round_2"
+  | "round_3"
+  | "round_4"
+  | "judging"
+  | "verification"
+  | "consensus"
+  | "synthesis";
+
+// Order and labels must match backend/app/api/debates.py's PIPELINE_STAGES.
+export const PIPELINE_STAGES: { key: PipelineStage; label: string }[] = [
+  { key: "round_1", label: "Independent Answers" },
+  { key: "round_2", label: "Cross Critique" },
+  { key: "round_3", label: "Counterarguments" },
+  { key: "round_4", label: "Revision" },
+  { key: "judging", label: "Judging" },
+  { key: "verification", label: "Fact Verification" },
+  { key: "consensus", label: "Consensus" },
+  { key: "synthesis", label: "Final Synthesis" },
+];
+
 export interface DebateSummary {
   id: number;
   question: string;
   status: DebateStatus;
+  stage: PipelineStage | null;
 }
 
 export interface CouncilVerdict {
