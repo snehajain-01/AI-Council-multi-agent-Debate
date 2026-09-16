@@ -3,7 +3,7 @@ domain models in app/models/, which describe in-memory data shapes."""
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Text, func
+from sqlalchemy import DateTime, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -11,7 +11,8 @@ from app.db.session import Base
 
 
 class DebateRecord(Base):
-    """One completed debate: the question asked and its full Council Verdict.
+    """One debate: the question asked, its lifecycle status, and (once complete)
+    its full Council Verdict.
 
     The verdict is stored as a single JSONB blob rather than normalized into
     many tables (debates/rounds/scores/claims/...). Postgres's JSONB type is
@@ -24,5 +25,7 @@ class DebateRecord(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     question: Mapped[str] = mapped_column(Text)
-    verdict: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    verdict: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
