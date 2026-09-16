@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.models.evidence import Evidence
+
 ClaimType = Literal["factual", "statistical", "causal", "definitional"]
 
 
@@ -48,3 +50,18 @@ class ClaimVerification(BaseModel):
         "or fail to address the claim?"
     )
     status: VerificationStatus = Field(description="The status that follows from the reasoning above")
+
+
+class ClaimVerificationRecord(BaseModel):
+    """One claim, which agent made it, the evidence retrieved, and its verification result."""
+
+    agent_name: str
+    claim: Claim
+    evidence: list[Evidence]
+    verification: ClaimVerification
+
+
+class EvidenceReport(BaseModel):
+    """All claim verifications gathered across every agent's final position."""
+
+    records: list[ClaimVerificationRecord]

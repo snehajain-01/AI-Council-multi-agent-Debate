@@ -1,7 +1,20 @@
 """Produces the final, user-facing Council Verdict from everything the debate produced."""
 
+from app.core.verification import SUPPORTING_STATUSES
+from app.models.claim import EvidenceReport
 from app.models.debate import ConsensusResult, CouncilVerdict, JudgeResult, RevisedPosition, SynthesizedAnswer
 from app.providers.base import BaseLLMProvider
+
+# A code-level safeguard, not just a prompt instruction: testing showed the model
+# can ignore the "explicitly state disagreement" instruction and produce a bare,
+# confident-sounding answer even when consensus_level is no_consensus. Since "the
+# system must be able to say agents disagree" is a non-negotiable design principle,
+# not just a preference, this is enforced deterministically rather than left to the
+# model's discretion.
+CONSENSUS_DISCLAIMERS = {
+    "no_consensus": "The analysts did not reach a reliable consensus on this question. ",
+    "partial_consensus": "The analysts reached only partial agreement on this question. ",
+}
 
 SYNTHESIZER_SYSTEM_PROMPT = (
     "You are writing the final answer on behalf of a panel of independent analysts "
@@ -10,7 +23,9 @@ SYNTHESIZER_SYSTEM_PROMPT = (
     "strong, give a single confident answer. If only partial, give the shared "
     "conclusion but clearly flag the specific disagreements. If there is no "
     "consensus, do not manufacture a unified answer -- explicitly state that the "
-    "analysts disagree and summarize the different positions fairly."
+    "analysts disagree and summarize the different positions fairly. If many of "
+    "their claims were not supported by external evidence, say so plainly rather "
+    "than presenting the answer as more reliable than it is."
 )
 
 
@@ -26,6 +41,7 @@ class Synthesizer:
         revised_positions: dict[str, RevisedPosition],
         judge_result: JudgeResult,
         consensus_result: ConsensusResult,
+        evidence_report: EvidenceReport | None = None,
     ) -> CouncilVerdict:
         strongest_label, strongest_verdict = max(
             judge_result.verdicts_by_label.items(), key=lambda item: item[1].weighted_total
@@ -39,11 +55,21 @@ class Synthesizer:
         )
         agreement = consensus_result.agreement
 
+        records = evidence_report.records if evidence_report else []
+        claims_checked = len(records)
+        claims_supported = sum(1 for r in records if r.verification.status in SUPPORTING_STATUSES)
+        evidence_line = (
+            f"Evidence check: {claims_supported}/{claims_checked} claims supported by external evidence\n"
+            if claims_checked
+            else "Evidence check: no checkable claims were verified\n"
+        )
+
         prompt = (
             f"Question: {question}\n\n"
             f"Consensus assessment: {consensus_result.consensus_level} ({consensus_result.explanation})\n"
             f"Shared conclusion (if any): {agreement.shared_conclusion or 'none'}\n"
-            f"Key disagreements: {'; '.join(agreement.key_disagreements) or 'none'}\n\n"
+            f"Key disagreements: {'; '.join(agreement.key_disagreements) or 'none'}\n"
+            f"{evidence_line}\n"
             f"The analysts' final positions:\n{positions_text}\n\n"
             "Write the final answer to the original question."
         )
@@ -55,9 +81,12 @@ class Synthesizer:
         )
         synthesized = SynthesizedAnswer.model_validate_json(response.content)
 
+        disclaimer = CONSENSUS_DISCLAIMERS.get(consensus_result.consensus_level, "")
+        final_answer = f"{disclaimer}{synthesized.final_answer}" if disclaimer else synthesized.final_answer
+
         return CouncilVerdict(
             question=question,
-            final_answer=synthesized.final_answer,
+            final_answer=final_answer,
             consensus_level=consensus_result.consensus_level,
             consensus_explanation=consensus_result.explanation,
             confidence=consensus_result.average_judge_score,
@@ -65,4 +94,6 @@ class Synthesizer:
             strongest_agent_score=strongest_verdict.weighted_total,
             key_disagreements=agreement.key_disagreements,
             agent_positions={name: position.position for name, position in revised_positions.items()},
+            claims_supported=claims_supported,
+            claims_checked=claims_checked,
         )

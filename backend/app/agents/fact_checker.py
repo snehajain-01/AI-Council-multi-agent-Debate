@@ -10,10 +10,13 @@ CLAIM_EXTRACTION_SYSTEM_PROMPT = (
     "checkable if it asserts something about the world that could, in principle, be "
     "confirmed or contradicted by external evidence -- a fact, a statistic, a causal "
     "relationship, or a definition. Exclude pure opinions, value judgments, or "
-    "recommendations ('we should...', 'this is important', 'I believe...'). Restate "
-    "each claim as a standalone sentence that makes sense without the surrounding "
-    "context. Extract at most the 5 most significant checkable claims -- do not pad "
-    "the list with minor or redundant restatements of the same point."
+    "recommendations ('we should...', 'this is important', 'I believe...'). Each "
+    "claim must be a complete, self-contained, grammatical sentence that asserts a "
+    "specific fact -- never a topic label, sentence fragment, or vague statement "
+    "like 'the concerns about X' or 'the impacts of Y'. Extract at most the 5 most "
+    "significant checkable claims. If the analysis contains few or no genuine "
+    "checkable claims, extract fewer, or none at all -- never force a vague phrase "
+    "into the list just to fill it."
 )
 
 VERIFICATION_SYSTEM_PROMPT = (

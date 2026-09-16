@@ -197,6 +197,9 @@ class ConsensusResult(BaseModel):
     average_judge_score: float
     judge_score_spread: float = Field(description="max weighted_total minus min weighted_total across agents")
     total_critique_volume: int = Field(description="Total critique points raised across all agents in Round 2")
+    evidence_support_ratio: float = Field(
+        ge=0, le=1, description="Fraction of checked claims that were SUPPORTED or PARTIALLY_SUPPORTED"
+    )
     explanation: str = Field(description="Human-readable summary of why this consensus level was reached")
 
 
@@ -224,3 +227,5 @@ class CouncilVerdict(BaseModel):
     strongest_agent_score: float
     key_disagreements: list[str]
     agent_positions: dict[str, str] = Field(description="Each agent's final position, for transparency")
+    claims_supported: int = Field(description="Number of checked claims rated SUPPORTED or PARTIALLY_SUPPORTED")
+    claims_checked: int = Field(description="Total number of claims that were fact-checked")

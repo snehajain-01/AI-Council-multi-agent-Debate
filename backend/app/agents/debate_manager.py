@@ -4,8 +4,11 @@ import asyncio
 import random
 
 from app.agents.debate_agent import DebateAgent
+from app.agents.fact_checker import FactChecker
 from app.agents.judge_agent import JudgeAgent
 from app.core.consensus import determine_consensus
+from app.core.verification import compute_evidence_support_ratio
+from app.models.claim import Claim, ClaimVerificationRecord, EvidenceReport
 from app.models.debate import (
     AgentPosition,
     ConsensusResult,
@@ -16,6 +19,7 @@ from app.models.debate import (
     RevisedPosition,
     Round2Result,
 )
+from app.services.research_service import ResearchService
 
 
 class DebateManager:
@@ -101,6 +105,35 @@ class DebateManager:
 
         return JudgeResult(verdicts_by_label=verdicts_by_label, label_map=label_map)
 
+    async def run_verification(
+        self,
+        revised_positions: dict[str, RevisedPosition],
+        fact_checker: FactChecker,
+        research_service: ResearchService,
+    ) -> EvidenceReport:
+        """Extract, retrieve evidence for, and verify each agent's claims.
+
+        Runs fully concurrently: all agents' extractions run together, and within
+        each agent, all of its claims are searched and verified together too.
+        """
+
+        async def verify_one_claim(agent_name: str, claim: Claim) -> ClaimVerificationRecord:
+            evidence = await research_service.search(claim.text)
+            verification = await fact_checker.verify_claim(claim, evidence)
+            return ClaimVerificationRecord(
+                agent_name=agent_name, claim=claim, evidence=evidence, verification=verification
+            )
+
+        async def verify_agent(agent_name: str, position: RevisedPosition) -> list[ClaimVerificationRecord]:
+            claims = await fact_checker.extract_claims(position)
+            return await asyncio.gather(*(verify_one_claim(agent_name, claim) for claim in claims))
+
+        nested_records = await asyncio.gather(
+            *(verify_agent(name, position) for name, position in revised_positions.items())
+        )
+        all_records = [record for records in nested_records for record in records]
+        return EvidenceReport(records=all_records)
+
     async def run_consensus(
         self,
         question: str,
@@ -108,10 +141,12 @@ class DebateManager:
         round2_result: Round2Result,
         judge_result: JudgeResult,
         judge: JudgeAgent,
+        evidence_report: EvidenceReport | None = None,
     ) -> ConsensusResult:
-        """Combine agreement classification, judge scores, and debate intensity into
-        a final consensus level. Reuses judge_result's label map so the agreement
-        assessment sees the same anonymized view the judge scored."""
+        """Combine agreement classification, judge scores, debate intensity, and
+        (if provided) evidence support into a final consensus level. Reuses
+        judge_result's label map so the agreement assessment sees the same
+        anonymized view the judge scored."""
         labeled_positions = {
             label: revised_positions[name] for label, name in judge_result.label_map.items()
         }
@@ -122,9 +157,13 @@ class DebateManager:
             for critique_set in round2_result.critiques_by_agent.values()
             for critique in critique_set.critiques
         )
+        evidence_support_ratio = (
+            compute_evidence_support_ratio(evidence_report.records) if evidence_report else 1.0
+        )
 
         return determine_consensus(
             agreement=agreement,
             judge_verdicts=list(judge_result.verdicts_by_label.values()),
             total_critique_volume=total_critique_volume,
+            evidence_support_ratio=evidence_support_ratio,
         )
