@@ -56,7 +56,7 @@ async def main() -> None:
     print(f"Consensus level: {consensus.consensus_level.upper()}")
 
     print("\n=== FINAL COUNCIL VERDICT ===")
-    verdict = await synthesizer.synthesize(question, revised, judge_result, consensus)
+    verdict = await synthesizer.synthesize(question, manager.agents, revised, judge_result, consensus)
     print(f"\nQuestion: {verdict.question}")
     print(f"\nFinal Answer:\n{verdict.final_answer}")
     print(f"\nConsensus: {verdict.consensus_level.upper()}")
@@ -67,9 +67,9 @@ async def main() -> None:
         print("Key disagreements:")
         for d in verdict.key_disagreements:
             print(f"  - {d}")
-    print("\nAgent positions:")
-    for name, position in verdict.agent_positions.items():
-        print(f"  {name}: {position}")
+    print("\nAgents:")
+    for agent in verdict.agents:
+        print(f"  {agent.name} ({agent.model}): {agent.position} [confidence {agent.confidence}, judge {agent.judge_score:.1f}]")
 
 
 if __name__ == "__main__":

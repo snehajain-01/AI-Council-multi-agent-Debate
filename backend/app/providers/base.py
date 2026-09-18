@@ -21,6 +21,8 @@ class BaseLLMProvider(ABC):
     so that agent code never depends on a specific provider's API shape.
     """
 
+    model_name: str
+
     @abstractmethod
     async def generate(
         self,

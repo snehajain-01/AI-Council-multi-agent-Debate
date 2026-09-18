@@ -215,6 +215,26 @@ class SynthesizedAnswer(BaseModel):
     )
 
 
+class AgentSummary(BaseModel):
+    """One agent's final answer and scoring, for per-agent display.
+
+    `model` is the actual underlying model name (e.g. "llama3.2:1b"), never a
+    commercial brand name unless that provider is genuinely being used --
+    labeling agents "ChatGPT"/"Claude"/"Gemini" when they're all really the
+    same local model would misrepresent what actually produced the answer.
+    """
+
+    name: str
+    model: str
+    position: str
+    reasoning: str
+    key_arguments: list[str]
+    weaknesses: list[str]
+    changes_from_original: list[str]
+    confidence: float
+    judge_score: float
+
+
 class CouncilVerdict(BaseModel):
     """The complete, user-facing output of a debate."""
 
@@ -226,6 +246,6 @@ class CouncilVerdict(BaseModel):
     strongest_agent: str = Field(description="The agent whose final position the judge scored highest")
     strongest_agent_score: float
     key_disagreements: list[str]
-    agent_positions: dict[str, str] = Field(description="Each agent's final position, for transparency")
+    agents: list[AgentSummary] = Field(description="Each agent's final answer, reasoning, and scores")
     claims_supported: int = Field(description="Number of checked claims rated SUPPORTED or PARTIALLY_SUPPORTED")
     claims_checked: int = Field(description="Total number of claims that were fact-checked")

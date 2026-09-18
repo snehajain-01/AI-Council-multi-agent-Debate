@@ -1,8 +1,16 @@
 """Produces the final, user-facing Council Verdict from everything the debate produced."""
 
+from app.agents.debate_agent import DebateAgent
 from app.core.verification import SUPPORTING_STATUSES
 from app.models.claim import EvidenceReport
-from app.models.debate import ConsensusResult, CouncilVerdict, JudgeResult, RevisedPosition, SynthesizedAnswer
+from app.models.debate import (
+    AgentSummary,
+    ConsensusResult,
+    CouncilVerdict,
+    JudgeResult,
+    RevisedPosition,
+    SynthesizedAnswer,
+)
 from app.providers.base import BaseLLMProvider
 
 # A code-level safeguard, not just a prompt instruction: testing showed the model
@@ -38,6 +46,7 @@ class Synthesizer:
     async def synthesize(
         self,
         question: str,
+        agents: list[DebateAgent],
         revised_positions: dict[str, RevisedPosition],
         judge_result: JudgeResult,
         consensus_result: ConsensusResult,
@@ -47,6 +56,11 @@ class Synthesizer:
             judge_result.verdicts_by_label.items(), key=lambda item: item[1].weighted_total
         )
         strongest_agent = judge_result.label_map[strongest_label]
+
+        judge_score_by_name = {
+            name: judge_result.verdicts_by_label[label].weighted_total
+            for label, name in judge_result.label_map.items()
+        }
 
         positions_text = "\n\n".join(
             f"{name} (judge score {judge_result.verdicts_by_label[label].weighted_total:.1f}/100): "
@@ -84,6 +98,21 @@ class Synthesizer:
         disclaimer = CONSENSUS_DISCLAIMERS.get(consensus_result.consensus_level, "")
         final_answer = f"{disclaimer}{synthesized.final_answer}" if disclaimer else synthesized.final_answer
 
+        agent_summaries = [
+            AgentSummary(
+                name=agent.name,
+                model=agent.provider.model_name,
+                position=revised_positions[agent.name].position,
+                reasoning=revised_positions[agent.name].reasoning,
+                key_arguments=revised_positions[agent.name].key_arguments,
+                weaknesses=revised_positions[agent.name].weaknesses,
+                changes_from_original=revised_positions[agent.name].changes_from_original,
+                confidence=revised_positions[agent.name].confidence,
+                judge_score=judge_score_by_name[agent.name],
+            )
+            for agent in agents
+        ]
+
         return CouncilVerdict(
             question=question,
             final_answer=final_answer,
@@ -93,7 +122,7 @@ class Synthesizer:
             strongest_agent=strongest_agent,
             strongest_agent_score=strongest_verdict.weighted_total,
             key_disagreements=agreement.key_disagreements,
-            agent_positions={name: position.position for name, position in revised_positions.items()},
+            agents=agent_summaries,
             claims_supported=claims_supported,
             claims_checked=claims_checked,
         )

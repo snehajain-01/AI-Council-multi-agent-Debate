@@ -31,6 +31,18 @@ export interface DebateSummary {
   stage: PipelineStage | null;
 }
 
+export interface AgentSummary {
+  name: string;
+  model: string;
+  position: string;
+  reasoning: string;
+  key_arguments: string[];
+  weaknesses: string[];
+  changes_from_original: string[];
+  confidence: number;
+  judge_score: number;
+}
+
 export interface CouncilVerdict {
   question: string;
   final_answer: string;
@@ -40,7 +52,7 @@ export interface CouncilVerdict {
   strongest_agent: string;
   strongest_agent_score: number;
   key_disagreements: string[];
-  agent_positions: Record<string, string>;
+  agents: AgentSummary[];
   claims_supported: number;
   claims_checked: number;
 }

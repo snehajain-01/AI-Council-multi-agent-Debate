@@ -69,7 +69,9 @@ async def main() -> None:
     print(f"Explanation: {consensus.explanation}")
 
     print("\n=== FINAL COUNCIL VERDICT ===")
-    verdict = await synthesizer.synthesize(question, revised, judge_result, consensus, evidence_report)
+    verdict = await synthesizer.synthesize(
+        question, manager.agents, revised, judge_result, consensus, evidence_report
+    )
     print(f"\nFinal Answer:\n{verdict.final_answer}")
     print(f"\nConsensus: {verdict.consensus_level.upper()}")
     print(f"Confidence: {verdict.confidence:.1f}/100")

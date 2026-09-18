@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createDebate, getDebate, type DebateDetail } from "./api";
+import { AgentCard } from "./AgentCard";
 import { ProgressChecklist } from "./ProgressChecklist";
 
 function App() {
@@ -82,17 +83,26 @@ function App() {
             )}
 
             {debate.status === "completed" && debate.verdict && (
-              <div className="flex flex-col gap-3">
-                <p className="text-sm font-semibold uppercase text-gray-500">
-                  {debate.verdict.consensus_level.replace("_", " ")}
-                </p>
-                <p className="text-lg">{debate.verdict.final_answer}</p>
-                <p className="text-sm text-gray-600">
-                  Confidence: {debate.verdict.confidence.toFixed(1)}/100
-                </p>
-                <p className="text-sm text-gray-600">
-                  Claims verified: {debate.verdict.claims_supported}/{debate.verdict.claims_checked}
-                </p>
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm font-semibold uppercase text-gray-500">
+                    {debate.verdict.consensus_level.replace("_", " ")}
+                  </p>
+                  <p className="text-lg">{debate.verdict.final_answer}</p>
+                  <p className="text-sm text-gray-600">
+                    Confidence: {debate.verdict.confidence.toFixed(1)}/100
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Claims verified: {debate.verdict.claims_supported}/{debate.verdict.claims_checked}
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm font-semibold text-gray-500">Individual Answers</p>
+                  {debate.verdict.agents.map((agent) => (
+                    <AgentCard key={agent.name} agent={agent} />
+                  ))}
+                </div>
               </div>
             )}
           </div>

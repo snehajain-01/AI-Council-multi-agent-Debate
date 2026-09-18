@@ -1,5 +1,6 @@
 """Endpoints for creating and checking on debates."""
 
+import asyncio
 import os
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -18,6 +19,14 @@ from app.providers.ollama_provider import OllamaProvider
 from app.services.research_service import ResearchService
 
 router = APIRouter(prefix="/debates", tags=["debates"])
+
+# Ollama serializes concurrent requests to one model anyway (confirmed in earlier
+# testing), so letting multiple debates run their pipelines truly concurrently
+# just multiplies the number of in-flight requests competing for the same queue --
+# which caused real, silent failures (connection timeouts/cancellations) when
+# several debates were submitted close together. Limiting to one at a time makes
+# debates queue predictably instead of randomly failing under load.
+_debate_semaphore = asyncio.Semaphore(1)
 
 
 class CreateDebateRequest(BaseModel):
@@ -82,52 +91,62 @@ async def _run_debate_pipeline(debate_id: int, question: str) -> None:
     Uses its own sessions rather than the request's, since this runs as a
     detached background task outside the request/response lifecycle. Updates
     `stage` before each phase so the frontend can render live progress.
+
+    Waits on _debate_semaphore first: status stays "pending" while queued
+    behind another debate, and only flips to "running" once this one actually
+    starts, so the two states mean what they say.
     """
-    manager, judge, synthesizer, fact_checker, research = _build_pipeline_components()
-
-    async with async_session_factory() as session:
-        record = await session.get(DebateRecord, debate_id)
-        record.status = "running"
-        await session.commit()
-
-    try:
-        await _set_stage(debate_id, "round_1")
-        positions = await manager.run_round_1(question)
-
-        await _set_stage(debate_id, "round_2")
-        round2_result = await manager.run_round_2(positions)
-
-        await _set_stage(debate_id, "round_3")
-        counterarguments = await manager.run_round_3(positions, round2_result)
-
-        await _set_stage(debate_id, "round_4")
-        revised = await manager.run_round_4(positions, counterarguments)
-
-        await _set_stage(debate_id, "judging")
-        judge_result = await manager.run_judging(question, revised, judge)
-
-        await _set_stage(debate_id, "verification")
-        evidence_report = await manager.run_verification(revised, fact_checker, research)
-
-        await _set_stage(debate_id, "consensus")
-        consensus = await manager.run_consensus(
-            question, revised, round2_result, judge_result, judge, evidence_report
-        )
-
-        await _set_stage(debate_id, "synthesis")
-        verdict = await synthesizer.synthesize(question, revised, judge_result, consensus, evidence_report)
+    async with _debate_semaphore:
+        manager, judge, synthesizer, fact_checker, research = _build_pipeline_components()
 
         async with async_session_factory() as session:
             record = await session.get(DebateRecord, debate_id)
-            record.status = "completed"
-            record.verdict = verdict.model_dump()
+            record.status = "running"
             await session.commit()
-    except Exception as exc:
-        async with async_session_factory() as session:
-            record = await session.get(DebateRecord, debate_id)
-            record.status = "failed"
-            record.error = str(exc)
-            await session.commit()
+
+        try:
+            await _set_stage(debate_id, "round_1")
+            positions = await manager.run_round_1(question)
+
+            await _set_stage(debate_id, "round_2")
+            round2_result = await manager.run_round_2(positions)
+
+            await _set_stage(debate_id, "round_3")
+            counterarguments = await manager.run_round_3(positions, round2_result)
+
+            await _set_stage(debate_id, "round_4")
+            revised = await manager.run_round_4(positions, counterarguments)
+
+            await _set_stage(debate_id, "judging")
+            judge_result = await manager.run_judging(question, revised, judge)
+
+            await _set_stage(debate_id, "verification")
+            evidence_report = await manager.run_verification(revised, fact_checker, research)
+
+            await _set_stage(debate_id, "consensus")
+            consensus = await manager.run_consensus(
+                question, revised, round2_result, judge_result, judge, evidence_report
+            )
+
+            await _set_stage(debate_id, "synthesis")
+            verdict = await synthesizer.synthesize(
+                question, manager.agents, revised, judge_result, consensus, evidence_report
+            )
+
+            async with async_session_factory() as session:
+                record = await session.get(DebateRecord, debate_id)
+                record.status = "completed"
+                record.verdict = verdict.model_dump()
+                await session.commit()
+        except Exception as exc:
+            # str(exc) can be empty for some exceptions (e.g. a cancelled
+            # connection), which used to leave `error` unhelpfully blank.
+            message = str(exc) or repr(exc)
+            async with async_session_factory() as session:
+                record = await session.get(DebateRecord, debate_id)
+                record.status = "failed"
+                record.error = f"{type(exc).__name__}: {message}"
+                await session.commit()
 
 
 @router.post("", response_model=DebateSummary, status_code=201)

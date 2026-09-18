@@ -12,6 +12,7 @@ class OllamaProvider(BaseLLMProvider):
 
     def __init__(self, model: str, base_url: str = "http://localhost:11434", timeout: float = 300.0):
         self.model = model
+        self.model_name = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
